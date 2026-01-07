@@ -12,23 +12,23 @@ Text utilities: natural, integer, identifier, lexeme
 namespace Sift
 
 /-- Parse zero or more chars into a string -/
-def manyChars (p : Parser Char) : Parser String := do
+def manyChars {σ : Type} (p : Parser σ Char) : Parser σ String := do
   let chars ← many p
   pure (String.ofList chars.toList)
 
 /-- Parse one or more chars into a string -/
-def many1Chars (p : Parser Char) : Parser String := do
+def many1Chars {σ : Type} (p : Parser σ Char) : Parser σ String := do
   let chars ← many1 p
   pure (String.ofList chars.toList)
 
 /-- Parse a natural number (unsigned integer) -/
-def natural : Parser Nat := do
+def natural {σ : Type} : Parser σ Nat := do
   let digits ← many1 digit
   let n := digits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
   pure n
 
 /-- Parse an integer (with optional leading sign) -/
-def integer : Parser Int := do
+def integer {σ : Type} : Parser σ Int := do
   let sign ← optional (char '-' <|> char '+')
   let n ← natural
   match sign with
@@ -36,7 +36,7 @@ def integer : Parser Int := do
   | _ => pure (n : Int)
 
 /-- Parse a hex number (without 0x prefix) -/
-def hexNatural : Parser Nat := do
+def hexNatural {σ : Type} : Parser σ Nat := do
   let digits ← many1 hexDigit
   let n := digits.foldl (fun acc c =>
     let v := if c >= '0' && c <= '9' then c.toNat - '0'.toNat
@@ -46,19 +46,19 @@ def hexNatural : Parser Nat := do
   pure n
 
 /-- Parse a binary number (without 0b prefix) -/
-def binNatural : Parser Nat := do
+def binNatural {σ : Type} : Parser σ Nat := do
   let digits ← many1 binDigit
   let n := digits.foldl (fun acc c => acc * 2 + (c.toNat - '0'.toNat)) 0
   pure n
 
 /-- Parse an octal number (without 0o prefix) -/
-def octNatural : Parser Nat := do
+def octNatural {σ : Type} : Parser σ Nat := do
   let digits ← many1 octDigit
   let n := digits.foldl (fun acc c => acc * 8 + (c.toNat - '0'.toNat)) 0
   pure n
 
 /-- Parse exactly n hex digits and return numeric value -/
-def hexDigitsN (n : Nat) : Parser Nat := do
+def hexDigitsN {σ : Type} (n : Nat) : Parser σ Nat := do
   let digits ← count n hexDigit
   let result := digits.foldl (fun acc c =>
     let v := if c >= '0' && c <= '9' then c.toNat - '0'.toNat
@@ -68,7 +68,7 @@ def hexDigitsN (n : Nat) : Parser Nat := do
   pure result
 
 /-- Parse a floating point number -/
-def float : Parser Float := do
+def float {σ : Type} : Parser σ Float := do
   let sign ← optional (char '-' <|> char '+')
   let intDigits ← many1 digit
   let intPart := intDigits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
@@ -92,7 +92,7 @@ def float : Parser Float := do
   | _ => pure result
 
 /-- Parse a decimal number (requires decimal point, no exponent) -/
-def decimal : Parser Float := do
+def decimal {σ : Type} : Parser σ Float := do
   let sign ← optional (char '-' <|> char '+')
   let intDigits ← many1 digit
   let intPart := intDigits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
@@ -109,7 +109,7 @@ def decimal : Parser Float := do
   | _ => pure result
 
 /-- Parse a number in scientific notation (requires exponent) -/
-def scientific : Parser Float := do
+def scientific {σ : Type} : Parser σ Float := do
   let sign ← optional (char '-' <|> char '+')
   let intDigits ← many1 digit
   let intPart := intDigits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
@@ -133,7 +133,7 @@ def scientific : Parser Float := do
   | _ => pure result
 
 /-- Parse 4-digit unicode escape, returns the character -/
-def unicodeEscape4 : Parser Char := do
+def unicodeEscape4 {σ : Type} : Parser σ Char := do
   let code ← hexDigitsN 4
   if h : code.toUInt32 < 0x110000 then
     pure (Char.ofNat code)
@@ -141,7 +141,7 @@ def unicodeEscape4 : Parser Char := do
     Parser.fail s!"invalid unicode code point: U+{String.ofList (Nat.toDigits 16 code)}"
 
 /-- Parse 8-digit unicode escape, returns the character -/
-def unicodeEscape8 : Parser Char := do
+def unicodeEscape8 {σ : Type} : Parser σ Char := do
   let code ← hexDigitsN 8
   if h : code.toUInt32 < 0x110000 then
     pure (Char.ofNat code)
@@ -150,7 +150,7 @@ def unicodeEscape8 : Parser Char := do
 
 /-- Parse digits with underscore separators (common in Rust, Python, TOML, etc.)
     Rules: no leading underscore, no trailing underscore, no consecutive underscores -/
-partial def digitsWithUnderscores (isValidDigit : Char → Bool) : Parser String := do
+partial def digitsWithUnderscores {σ : Type} (isValidDigit : Char → Bool) : Parser σ String := do
   let mut result := ""
   let mut lastWasUnderscore := false
   let mut first := true
@@ -174,71 +174,71 @@ partial def digitsWithUnderscores (isValidDigit : Char → Bool) : Parser String
   return result
 
 /-- Parse decimal digits with underscore separators -/
-def decimalWithUnderscores : Parser String :=
+def decimalWithUnderscores {σ : Type} : Parser σ String :=
   digitsWithUnderscores Char.isDigit
 
 /-- Parse hex digits with underscore separators -/
-def hexWithUnderscores : Parser String :=
+def hexWithUnderscores {σ : Type} : Parser σ String :=
   digitsWithUnderscores (fun c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))
 
 /-- Parse an identifier (letter followed by alphanums or underscore) -/
-def identifier : Parser String := do
+def identifier {σ : Type} : Parser σ String := do
   let first ← letter <|> char '_'
   let rest ← manyChars (alphaNum <|> char '_')
   pure (String.singleton first ++ rest)
 
 /-- Parse a lexeme (parser followed by whitespace skip) -/
-def lexeme {α : Type} (p : Parser α) : Parser α := do
+def lexeme {σ α : Type} (p : Parser σ α) : Parser σ α := do
   let result ← p
   spaces
   pure result
 
 /-- Parse a symbol (string followed by whitespace skip) -/
-def symbol (s : String) : Parser String :=
+def symbol {σ : Type} (s : String) : Parser σ String :=
   lexeme (string s)
 
 /-- Parse content between parentheses -/
-def parens {α : Type} (p : Parser α) : Parser α :=
+def parens {σ α : Type} (p : Parser σ α) : Parser σ α :=
   between (symbol "(") (symbol ")") p
 
 /-- Parse content between braces -/
-def braces {α : Type} (p : Parser α) : Parser α :=
+def braces {σ α : Type} (p : Parser σ α) : Parser σ α :=
   between (symbol "{") (symbol "}") p
 
 /-- Parse content between brackets -/
-def brackets {α : Type} (p : Parser α) : Parser α :=
+def brackets {σ α : Type} (p : Parser σ α) : Parser σ α :=
   between (symbol "[") (symbol "]") p
 
 /-- Parse content between angle brackets -/
-def angles {α : Type} (p : Parser α) : Parser α :=
+def angles {σ α : Type} (p : Parser σ α) : Parser σ α :=
   between (symbol "<") (symbol ">") p
 
 /-- Parse a comma-separated list -/
-def commaSep {α : Type} (p : Parser α) : Parser (Array α) :=
+def commaSep {σ α : Type} (p : Parser σ α) : Parser σ (Array α) :=
   sepBy p (symbol ",")
 
 /-- Parse a comma-separated list with at least one element -/
-def commaSep1 {α : Type} (p : Parser α) : Parser (Array α) :=
+def commaSep1 {σ α : Type} (p : Parser σ α) : Parser σ (Array α) :=
   sepBy1 p (symbol ",")
 
 /-- Parse a semicolon-separated list -/
-def semiSep {α : Type} (p : Parser α) : Parser (Array α) :=
+def semiSep {σ α : Type} (p : Parser σ α) : Parser σ (Array α) :=
   sepBy p (symbol ";")
 
 /-- Parse a semicolon-separated list with at least one element -/
-def semiSep1 {α : Type} (p : Parser α) : Parser (Array α) :=
+def semiSep1 {σ α : Type} (p : Parser σ α) : Parser σ (Array α) :=
   sepBy1 p (symbol ";")
 
 /-- Parse a double-quoted string literal with escape sequences -/
-def stringLiteral : Parser String := do
+def stringLiteral {σ : Type} : Parser σ String := do
   let _ ← char '"'
   let chars ← manyTill charContent (char '"')
   let _ ← char '"'
   pure (String.ofList chars.toList)
 where
-  charContent : Parser Char :=
+  charContent : Parser σ Char :=
     (char '\\' *> escapeChar) <|> satisfy (· != '"')
-  escapeChar : Parser Char :=
+  escapeChar : Parser σ Char :=
     (char 'n' *> pure '\n') <|>
     (char 'r' *> pure '\r') <|>
     (char 't' *> pure '\t') <|>
@@ -247,13 +247,13 @@ where
     (char '0' *> pure '\x00')
 
 /-- Parse a single-quoted character literal -/
-def charLiteral : Parser Char := do
+def charLiteral {σ : Type} : Parser σ Char := do
   let _ ← char '\''
   let c ← (char '\\' *> escapeChar) <|> satisfy (· != '\'')
   let _ ← char '\''
   pure c
 where
-  escapeChar : Parser Char :=
+  escapeChar : Parser σ Char :=
     (char 'n' *> pure '\n') <|>
     (char 'r' *> pure '\r') <|>
     (char 't' *> pure '\t') <|>

@@ -6,7 +6,7 @@ package sift where
     ⟨`autoImplicit, false⟩,
     ⟨`relaxedAutoImplicit, false⟩
   ]
-  version := v!"0.0.2"
+  version := v!"0.0.3"
 
 require crucible from git "https://github.com/nathanial/crucible" @ "v0.0.3"
 

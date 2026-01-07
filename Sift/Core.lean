@@ -4,9 +4,9 @@ namespace Sift
 # Sift.Core
 
 Core types for the parser combinator library:
-- `ParseState`: tracks position in input
+- `ParseState`: tracks position in input plus user state
 - `ParseError`: error with position and message
-- `Parser`: the main parser monad
+- `Parser`: the main parser monad (parameterized by user state type)
 -/
 
 /-- Source position for error reporting -/
@@ -19,8 +19,8 @@ structure SourcePos where
 instance : ToString SourcePos where
   toString p := s!"line {p.line}, column {p.column}"
 
-/-- Parser state: tracks position in the input string -/
-structure ParseState where
+/-- Parser state: tracks position in the input string plus user-defined state -/
+structure ParseState (σ : Type) where
   /-- The original input string -/
   input : String
   /-- Current byte position -/
@@ -29,24 +29,26 @@ structure ParseState where
   line : Nat := 1
   /-- Current column number (1-indexed) -/
   column : Nat := 1
-  deriving Repr, BEq
+  /-- User-defined state -/
+  userState : σ
+  deriving Repr
 
 namespace ParseState
 
-/-- Create initial state from input string -/
-def init (input : String) : ParseState :=
-  { input, pos := 0, line := 1, column := 1 }
+/-- Create initial state from input string and user state -/
+def init {σ : Type} (input : String) (userState : σ) : ParseState σ :=
+  { input, pos := 0, line := 1, column := 1, userState }
 
 /-- Check if at end of input -/
-def atEnd (s : ParseState) : Bool :=
+def atEnd {σ : Type} (s : ParseState σ) : Bool :=
   s.pos >= s.input.length
 
 /-- Get current character (if not at end) -/
-def current? (s : ParseState) : Option Char :=
+def current? {σ : Type} (s : ParseState σ) : Option Char :=
   if s.atEnd then none else some (String.Pos.Raw.get s.input ⟨s.pos⟩)
 
 /-- Advance to next character, updating line/column -/
-def advance (s : ParseState) : ParseState :=
+def advance {σ : Type} (s : ParseState σ) : ParseState σ :=
   if s.atEnd then s
   else
     let c := String.Pos.Raw.get s.input ⟨s.pos⟩
@@ -56,7 +58,7 @@ def advance (s : ParseState) : ParseState :=
     { s with pos := s.pos + 1, line := newLine, column := newCol }
 
 /-- Get current source position -/
-def sourcePos (s : ParseState) : SourcePos :=
+def sourcePos {σ : Type} (s : ParseState σ) : SourcePos :=
   { offset := s.pos, line := s.line, column := s.column }
 
 end ParseState
@@ -77,7 +79,7 @@ instance : ToString ParseError where
 namespace ParseError
 
 /-- Create error from parse state -/
-def fromState (s : ParseState) (msg : String) : ParseError :=
+def fromState {σ : Type} (s : ParseState σ) (msg : String) : ParseError :=
   { pos := s.sourcePos, message := msg }
 
 /-- Add expected item to error -/
@@ -92,37 +94,48 @@ def merge (e1 e2 : ParseError) : ParseError :=
 
 end ParseError
 
-/-- The Parser monad: a function from state to result -/
-def Parser (α : Type) := ParseState → Except ParseError (α × ParseState)
+/-- The Parser monad: a function from state to result, parameterized by user state type σ -/
+def Parser (σ : Type) (α : Type) := ParseState σ → Except ParseError (α × ParseState σ)
 
 namespace Parser
 
-instance {α : Type} : Inhabited (Parser α) where
+instance {σ α : Type} : Inhabited (Parser σ α) where
   default := fun s => .error (ParseError.fromState s "no parse")
 
 /-- Get current state -/
-def get : Parser ParseState := fun s => .ok (s, s)
+def get {σ : Type} : Parser σ (ParseState σ) := fun s => .ok (s, s)
 
 /-- Set current state -/
-def set (s : ParseState) : Parser Unit := fun _ => .ok ((), s)
+def set {σ : Type} (s : ParseState σ) : Parser σ Unit := fun _ => .ok ((), s)
 
 /-- Modify current state -/
-def modify (f : ParseState → ParseState) : Parser Unit := fun s => .ok ((), f s)
+def modify {σ : Type} (f : ParseState σ → ParseState σ) : Parser σ Unit := fun s => .ok ((), f s)
+
+/-- Get user state -/
+def getUserState {σ : Type} : Parser σ σ := fun s => .ok (s.userState, s)
+
+/-- Set user state -/
+def setUserState {σ : Type} (st : σ) : Parser σ Unit := fun s =>
+  .ok ((), { s with userState := st })
+
+/-- Modify user state -/
+def modifyUserState {σ : Type} (f : σ → σ) : Parser σ Unit := fun s =>
+  .ok ((), { s with userState := f s.userState })
 
 /-- Pure value (always succeeds) -/
-protected def pure {α : Type} (a : α) : Parser α := fun s => .ok (a, s)
+protected def pure {σ α : Type} (a : α) : Parser σ α := fun s => .ok (a, s)
 
 /-- Bind (sequence parsers) -/
-protected def bind {α β : Type} (p : Parser α) (f : α → Parser β) : Parser β := fun s =>
+protected def bind {σ α β : Type} (p : Parser σ α) (f : α → Parser σ β) : Parser σ β := fun s =>
   match p s with
   | .ok (a, s') => f a s'
   | .error e => .error e
 
-instance : Monad Parser where
+instance {σ : Type} : Monad (Parser σ) where
   pure := Parser.pure
   bind := Parser.bind
 
-instance : MonadExceptOf ParseError Parser where
+instance {σ : Type} : MonadExceptOf ParseError (Parser σ) where
   throw e := fun _ => .error e
   tryCatch p handler := fun s =>
     match p s with
@@ -130,29 +143,48 @@ instance : MonadExceptOf ParseError Parser where
     | .error e => handler e s
 
 /-- Fail with a message -/
-def fail {α : Type} (msg : String) : Parser α := fun s =>
+def fail {σ α : Type} (msg : String) : Parser σ α := fun s =>
   .error (ParseError.fromState s msg)
 
-/-- Run a parser on an input string -/
-def run {α : Type} (p : Parser α) (input : String) : Except ParseError α :=
-  match p (ParseState.init input) with
+/-- Run a parser on an input string (for parsers with no user state) -/
+def run {α : Type} (p : Parser Unit α) (input : String) : Except ParseError α :=
+  match p (ParseState.init input ()) with
+  | .ok (a, _) => .ok a
+  | .error e => .error e
+
+/-- Run a parser on an input string with initial user state -/
+def runWith {σ α : Type} (p : Parser σ α) (input : String) (initState : σ) : Except ParseError α :=
+  match p (ParseState.init input initState) with
   | .ok (a, _) => .ok a
   | .error e => .error e
 
 /-- Run a parser and return both result and final state -/
-def runWithState {α : Type} (p : Parser α) (input : String) : Except ParseError (α × ParseState) :=
-  p (ParseState.init input)
+def runWithState {α : Type} (p : Parser Unit α) (input : String) : Except ParseError (α × ParseState Unit) :=
+  p (ParseState.init input ())
+
+/-- Run a parser with user state
+ and return both result and final state -/
+def runWithStateFull {σ α : Type} (p : Parser σ α) (input : String) (initState : σ) : Except ParseError (α × ParseState σ) :=
+  p (ParseState.init input initState)
 
 /-- Run a parser, requiring it to consume all input -/
-def parse {α : Type} (p : Parser α) (input : String) : Except ParseError α :=
-  match p (ParseState.init input) with
+def parse {α : Type} (p : Parser Unit α) (input : String) : Except ParseError α :=
+  match p (ParseState.init input ()) with
+  | .ok (a, finalState) =>
+    if finalState.atEnd then .ok a
+    else .error (ParseError.fromState finalState "unexpected trailing input")
+  | .error e => .error e
+
+/-- Run a parser with user state, requiring it to consume all input -/
+def parseWith {σ α : Type} (p : Parser σ α) (input : String) (initState : σ) : Except ParseError α :=
+  match p (ParseState.init input initState) with
   | .ok (a, finalState) =>
     if finalState.atEnd then .ok a
     else .error (ParseError.fromState finalState "unexpected trailing input")
   | .error e => .error e
 
 /-- Get current source position -/
-def position : Parser SourcePos := fun s => .ok (s.sourcePos, s)
+def position {σ : Type} : Parser σ SourcePos := fun s => .ok (s.sourcePos, s)
 
 end Parser
 
