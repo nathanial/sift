@@ -3,6 +3,7 @@ import Sift.Primitives
 import Sift.Combinators
 import Sift.Char
 import Sift.Text
+import Sift.Prec
 
 /-!
 # Sift - Parser Combinator Library

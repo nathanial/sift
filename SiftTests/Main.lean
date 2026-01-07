@@ -5,6 +5,7 @@ import SiftTests.Combinators
 import SiftTests.Char
 import SiftTests.Text
 import SiftTests.Utf8
+import SiftTests.Prec
 
 open Crucible
 

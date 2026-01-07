@@ -51,6 +51,23 @@ partial def string {σ : Type} (expected : String) : Parser σ String := fun s =
           .error ((ParseError.fromState state s!"unexpected '{c}'").expecting s!"\"{expected}\"")
   go 0 s
 
+/-- Match a string case-insensitively (returns the matched string as it appeared in input) -/
+partial def stringCI {σ : Type} (expected : String) : Parser σ String := fun s =>
+  let rec go (idx : Nat) (state : ParseState σ) (acc : String) : Except ParseError (String × ParseState σ) :=
+    if idx >= expected.utf8ByteSize then
+      .ok (acc, state)
+    else
+      match state.current? with
+      | none =>
+        .error ((ParseError.fromState state "unexpected end of input").expecting s!"\"{expected}\"")
+      | some c =>
+        let ec := String.Pos.Raw.get expected ⟨idx⟩
+        if c.toLower == ec.toLower then
+          go (idx + ec.utf8Size) state.advance (acc.push c)
+        else
+          .error ((ParseError.fromState state s!"unexpected '{c}'").expecting s!"\"{expected}\"")
+  go 0 s ""
+
 /-- Match end of input -/
 def eof {σ : Type} : Parser σ Unit := fun s =>
   if s.atEnd then .ok ((), s)
