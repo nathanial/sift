@@ -232,6 +232,47 @@ test "float parses negative number" := do
   | .ok f => if (f - (-42.5)).abs < 0.001 then pure () else panic! s!"expected ~-42.5, got {f}"
   | .error _ => panic! "expected success"
 
+test "decimal parses simple decimal" := do
+  match Parser.run decimal "3.14" with
+  | .ok f => if (f - 3.14).abs < 0.001 then pure () else panic! s!"expected ~3.14, got {f}"
+  | .error _ => panic! "expected success"
+
+test "decimal parses negative decimal" := do
+  match Parser.run decimal "-0.5" with
+  | .ok f => if (f - (-0.5)).abs < 0.001 then pure () else panic! s!"expected ~-0.5, got {f}"
+  | .error _ => panic! "expected success"
+
+test "decimal fails without decimal point" := do
+  match Parser.run decimal "42" with
+  | .error _ => pure ()
+  | .ok _ => panic! "expected failure - decimal requires decimal point"
+
+test "decimal fails with exponent" := do
+  -- decimal should stop before 'e', leaving trailing input
+  match Parser.parse decimal "3.14e10" with
+  | .error _ => pure ()  -- trailing "e10" causes error
+  | .ok _ => panic! "expected failure - decimal shouldn't consume exponent"
+
+test "scientific parses with exponent" := do
+  match Parser.run scientific "1.5e10" with
+  | .ok f => if (f - 1.5e10).abs < 1.0 then pure () else panic! s!"expected ~1.5e10, got {f}"
+  | .error _ => panic! "expected success"
+
+test "scientific parses integer with exponent" := do
+  match Parser.run scientific "5e3" with
+  | .ok f => if (f - 5000.0).abs < 0.1 then pure () else panic! s!"expected ~5000, got {f}"
+  | .error _ => panic! "expected success"
+
+test "scientific parses negative exponent" := do
+  match Parser.run scientific "2.5E-2" with
+  | .ok f => if (f - 0.025).abs < 0.0001 then pure () else panic! s!"expected ~0.025, got {f}"
+  | .error _ => panic! "expected success"
+
+test "scientific fails without exponent" := do
+  match Parser.run scientific "3.14" with
+  | .error _ => pure ()
+  | .ok _ => panic! "expected failure - scientific requires exponent"
+
 test "unicodeEscape4 parses 4-digit escape" := do
   match Parser.run unicodeEscape4 "0041" with
   | .ok c => c ≡ 'A'

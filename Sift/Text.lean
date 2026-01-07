@@ -91,6 +91,47 @@ def float : Parser Float := do
   | some '-' => pure (-result)
   | _ => pure result
 
+/-- Parse a decimal number (requires decimal point, no exponent) -/
+def decimal : Parser Float := do
+  let sign ← optional (char '-' <|> char '+')
+  let intDigits ← many1 digit
+  let intPart := intDigits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
+  let mut result := intPart.toFloat
+  -- Fractional part (required for decimal)
+  let _ ← char '.'
+  let fracDigits ← many1 digit
+  let (frac, _) := fracDigits.foldl (fun (acc, div) c =>
+    let d := (c.toNat - '0'.toNat).toFloat / div
+    (acc + d, div * 10.0)) (0.0, 10.0)
+  result := result + frac
+  match sign with
+  | some '-' => pure (-result)
+  | _ => pure result
+
+/-- Parse a number in scientific notation (requires exponent) -/
+def scientific : Parser Float := do
+  let sign ← optional (char '-' <|> char '+')
+  let intDigits ← many1 digit
+  let intPart := intDigits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
+  let mut result := intPart.toFloat
+  -- Fractional part (optional)
+  if (← optional (char '.')).isSome then
+    let fracDigits ← many1 digit
+    let (frac, _) := fracDigits.foldl (fun (acc, div) c =>
+      let d := (c.toNat - '0'.toNat).toFloat / div
+      (acc + d, div * 10.0)) (0.0, 10.0)
+    result := result + frac
+  -- Exponent part (required for scientific)
+  let _ ← char 'e' <|> char 'E'
+  let expSign ← optional (char '-' <|> char '+')
+  let expDigits ← many1 digit
+  let exp := expDigits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
+  let expFloat := if expSign == some '-' then -(exp.toFloat) else exp.toFloat
+  result := result * Float.pow 10.0 expFloat
+  match sign with
+  | some '-' => pure (-result)
+  | _ => pure result
+
 /-- Parse 4-digit unicode escape, returns the character -/
 def unicodeEscape4 : Parser Char := do
   let code ← hexDigitsN 4
