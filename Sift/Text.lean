@@ -14,12 +14,12 @@ namespace Sift
 /-- Parse zero or more chars into a string -/
 def manyChars (p : Parser Char) : Parser String := do
   let chars ← many p
-  pure (String.mk chars.toList)
+  pure (String.ofList chars.toList)
 
 /-- Parse one or more chars into a string -/
 def many1Chars (p : Parser Char) : Parser String := do
   let chars ← many1 p
-  pure (String.mk chars.toList)
+  pure (String.ofList chars.toList)
 
 /-- Parse a natural number (unsigned integer) -/
 def natural : Parser Nat := do
@@ -234,7 +234,7 @@ def stringLiteral : Parser String := do
   let _ ← char '"'
   let chars ← manyTill charContent (char '"')
   let _ ← char '"'
-  pure (String.mk chars.toList)
+  pure (String.ofList chars.toList)
 where
   charContent : Parser Char :=
     (char '\\' *> escapeChar) <|> satisfy (· != '"')

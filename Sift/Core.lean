@@ -43,13 +43,13 @@ def atEnd (s : ParseState) : Bool :=
 
 /-- Get current character (if not at end) -/
 def current? (s : ParseState) : Option Char :=
-  if s.atEnd then none else some (s.input.get ⟨s.pos⟩)
+  if s.atEnd then none else some (String.Pos.Raw.get s.input ⟨s.pos⟩)
 
 /-- Advance to next character, updating line/column -/
 def advance (s : ParseState) : ParseState :=
   if s.atEnd then s
   else
-    let c := s.input.get ⟨s.pos⟩
+    let c := String.Pos.Raw.get s.input ⟨s.pos⟩
     let (newLine, newCol) :=
       if c == '\n' then (s.line + 1, 1)
       else (s.line, s.column + 1)

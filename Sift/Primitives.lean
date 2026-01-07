@@ -41,7 +41,7 @@ partial def string (expected : String) : Parser String := fun s =>
         -- Report at current position (may have consumed input)
         .error ((ParseError.fromState state "unexpected end of input").expecting s!"\"{expected}\"")
       | some c =>
-        let ec := expected.get ⟨idx⟩
+        let ec := String.Pos.Raw.get expected ⟨idx⟩
         if c == ec then
           go (idx + 1) state.advance
         else
@@ -52,7 +52,7 @@ partial def string (expected : String) : Parser String := fun s =>
 /-- Match end of input -/
 def eof : Parser Unit := fun s =>
   if s.atEnd then .ok ((), s)
-  else .error (ParseError.fromState s s!"expected end of input, got '{s.input.get ⟨s.pos⟩}'")
+  else .error (ParseError.fromState s s!"expected end of input, got '{String.Pos.Raw.get s.input ⟨s.pos⟩}'")
 
 /-- Peek at current character without consuming -/
 def peek : Parser (Option Char) := fun s =>
@@ -140,7 +140,7 @@ partial def peekString (n : Nat) : Parser (Option String) := fun s =>
     let available := s.input.length - s.pos
     if available < n then .ok (none, s)
     else
-      let result := s.input.extract ⟨s.pos⟩ ⟨s.pos + n⟩
+      let result := String.Pos.Raw.extract s.input ⟨s.pos⟩ ⟨s.pos + n⟩
       .ok (some result, s)
 
 end Sift
