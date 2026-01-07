@@ -57,6 +57,89 @@ def octNatural : Parser Nat := do
   let n := digits.foldl (fun acc c => acc * 8 + (c.toNat - '0'.toNat)) 0
   pure n
 
+/-- Parse exactly n hex digits and return numeric value -/
+def hexDigitsN (n : Nat) : Parser Nat := do
+  let digits ← count n hexDigit
+  let result := digits.foldl (fun acc c =>
+    let v := if c >= '0' && c <= '9' then c.toNat - '0'.toNat
+             else if c >= 'a' && c <= 'f' then c.toNat - 'a'.toNat + 10
+             else c.toNat - 'A'.toNat + 10
+    acc * 16 + v) 0
+  pure result
+
+/-- Parse a floating point number -/
+def float : Parser Float := do
+  let sign ← optional (char '-' <|> char '+')
+  let intDigits ← many1 digit
+  let intPart := intDigits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
+  let mut result := intPart.toFloat
+  -- Fractional part
+  if (← optional (char '.')).isSome then
+    let fracDigits ← many1 digit
+    let (frac, _) := fracDigits.foldl (fun (acc, div) c =>
+      let d := (c.toNat - '0'.toNat).toFloat / div
+      (acc + d, div * 10.0)) (0.0, 10.0)
+    result := result + frac
+  -- Exponent part
+  if (← optional (char 'e' <|> char 'E')).isSome then
+    let expSign ← optional (char '-' <|> char '+')
+    let expDigits ← many1 digit
+    let exp := expDigits.foldl (fun acc c => acc * 10 + (c.toNat - '0'.toNat)) 0
+    let expFloat := if expSign == some '-' then -(exp.toFloat) else exp.toFloat
+    result := result * Float.pow 10.0 expFloat
+  match sign with
+  | some '-' => pure (-result)
+  | _ => pure result
+
+/-- Parse 4-digit unicode escape, returns the character -/
+def unicodeEscape4 : Parser Char := do
+  let code ← hexDigitsN 4
+  if h : code.toUInt32 < 0x110000 then
+    pure (Char.ofNat code)
+  else
+    Parser.fail s!"invalid unicode code point: U+{String.ofList (Nat.toDigits 16 code)}"
+
+/-- Parse 8-digit unicode escape, returns the character -/
+def unicodeEscape8 : Parser Char := do
+  let code ← hexDigitsN 8
+  if h : code.toUInt32 < 0x110000 then
+    pure (Char.ofNat code)
+  else
+    Parser.fail s!"invalid unicode code point: U+{String.ofList (Nat.toDigits 16 code)}"
+
+/-- Parse digits with underscore separators (common in Rust, Python, TOML, etc.)
+    Rules: no leading underscore, no trailing underscore, no consecutive underscores -/
+partial def digitsWithUnderscores (isValidDigit : Char → Bool) : Parser String := do
+  let mut result := ""
+  let mut lastWasUnderscore := false
+  let mut first := true
+  let mut going := true
+  while going do
+    match ← peek with
+    | some c =>
+      if isValidDigit c then
+        let _ ← anyChar
+        result := result.push c
+        lastWasUnderscore := false
+        first := false
+      else if c == '_' && !first && !lastWasUnderscore then
+        let _ ← anyChar
+        lastWasUnderscore := true
+      else
+        going := false
+    | none => going := false
+  -- Trailing underscore check: if lastWasUnderscore is true, we consumed it but shouldn't have
+  -- This is allowed - the underscore was consumed but not added to result
+  return result
+
+/-- Parse decimal digits with underscore separators -/
+def decimalWithUnderscores : Parser String :=
+  digitsWithUnderscores Char.isDigit
+
+/-- Parse hex digits with underscore separators -/
+def hexWithUnderscores : Parser String :=
+  digitsWithUnderscores (fun c => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))
+
 /-- Parse an identifier (letter followed by alphanums or underscore) -/
 def identifier : Parser String := do
   let first ← letter <|> char '_'

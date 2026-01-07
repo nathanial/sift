@@ -152,6 +152,36 @@ test "octDigit fails on 8 or 9" := do
   | .error _ => pure ()
   | .ok _ => panic! "expected failure"
 
+test "hspace matches space and tab" := do
+  match Parser.run hspace " " with
+  | .ok c => c ≡ ' '
+  | .error _ => panic! "expected success"
+  match Parser.run hspace "\t" with
+  | .ok c => c ≡ '\t'
+  | .error _ => panic! "expected success"
+
+test "hspace fails on newline" := do
+  match Parser.run hspace "\n" with
+  | .error _ => pure ()
+  | .ok _ => panic! "expected failure"
+
+test "hspaces skips horizontal whitespace only" := do
+  let p := hspaces *> string "hello"
+  match Parser.run p "  \t hello" with
+  | .ok s => s ≡ "hello"
+  | .error _ => panic! "expected success"
+
+test "hspaces does not skip newlines" := do
+  let p := hspaces *> newline
+  match Parser.run p "  \n" with
+  | .ok c => c ≡ '\n'
+  | .error _ => panic! "expected success"
+
+test "hspaces1 requires at least one" := do
+  match Parser.run hspaces1 "hello" with
+  | .error _ => pure ()
+  | .ok _ => panic! "expected failure"
+
 #generate_tests
 
 end SiftTests.Char

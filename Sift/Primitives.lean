@@ -129,4 +129,18 @@ partial def skipWhile1 (pred : Char → Bool) : Parser Unit := fun s =>
       .ok ((), go s.advance)
     else .error (ParseError.fromState s s!"unexpected '{c}'")
 
+/-- Check if at end of input -/
+def atEnd : Parser Bool := fun s =>
+  .ok (s.atEnd, s)
+
+/-- Peek at next N characters without consuming -/
+partial def peekString (n : Nat) : Parser (Option String) := fun s =>
+  if s.atEnd then .ok (none, s)
+  else
+    let available := s.input.length - s.pos
+    if available < n then .ok (none, s)
+    else
+      let result := s.input.extract ⟨s.pos⟩ ⟨s.pos + n⟩
+      .ok (some result, s)
+
 end Sift

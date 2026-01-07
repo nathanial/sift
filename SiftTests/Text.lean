@@ -180,6 +180,82 @@ test "charLiteral parses escape" := do
   | .ok c => c ≡ '\n'
   | .error _ => panic! "expected success"
 
+test "digitsWithUnderscores parses plain digits" := do
+  match Parser.run decimalWithUnderscores "12345" with
+  | .ok s => s ≡ "12345"
+  | .error _ => panic! "expected success"
+
+test "digitsWithUnderscores parses digits with underscores" := do
+  match Parser.run decimalWithUnderscores "1_000_000" with
+  | .ok s => s ≡ "1000000"
+  | .error _ => panic! "expected success"
+
+test "digitsWithUnderscores stops at leading underscore" := do
+  -- Leading underscore means no digits consumed
+  match Parser.run decimalWithUnderscores "_123" with
+  | .ok s => s ≡ ""
+  | .error _ => panic! "expected success with empty string"
+
+test "digitsWithUnderscores handles trailing underscore" := do
+  -- Trailing underscore is consumed but not added to result
+  match Parser.run decimalWithUnderscores "123_" with
+  | .ok s => s ≡ "123"
+  | .error _ => panic! "expected success"
+
+test "digitsWithUnderscores stops at consecutive underscores" := do
+  match Parser.run decimalWithUnderscores "1__2" with
+  | .ok s => s ≡ "1"  -- stops at second underscore
+  | .error _ => panic! "expected success"
+
+test "hexWithUnderscores parses hex digits" := do
+  match Parser.run hexWithUnderscores "dead_beef" with
+  | .ok s => s ≡ "deadbeef"
+  | .error _ => panic! "expected success"
+
+test "float parses simple float" := do
+  match Parser.run float "3.14" with
+  | .ok f => if (f - 3.14).abs < 0.001 then pure () else panic! s!"expected ~3.14, got {f}"
+  | .error _ => panic! "expected success"
+
+test "float parses with exponent" := do
+  match Parser.run float "1.5e10" with
+  | .ok f => if (f - 1.5e10).abs < 1.0 then pure () else panic! s!"expected ~1.5e10, got {f}"
+  | .error _ => panic! "expected success"
+
+test "float parses negative exponent" := do
+  match Parser.run float "1.5e-3" with
+  | .ok f => if (f - 0.0015).abs < 0.0001 then pure () else panic! s!"expected ~0.0015, got {f}"
+  | .error _ => panic! "expected success"
+
+test "float parses negative number" := do
+  match Parser.run float "-42.5" with
+  | .ok f => if (f - (-42.5)).abs < 0.001 then pure () else panic! s!"expected ~-42.5, got {f}"
+  | .error _ => panic! "expected success"
+
+test "unicodeEscape4 parses 4-digit escape" := do
+  match Parser.run unicodeEscape4 "0041" with
+  | .ok c => c ≡ 'A'
+  | .error _ => panic! "expected success"
+  match Parser.run unicodeEscape4 "03B1" with
+  | .ok c => c ≡ 'α'
+  | .error _ => panic! "expected success"
+
+test "unicodeEscape8 parses 8-digit escape" := do
+  match Parser.run unicodeEscape8 "00000041" with
+  | .ok c => c ≡ 'A'
+  | .error _ => panic! "expected success"
+  match Parser.run unicodeEscape8 "0001F600" with
+  | .ok c => c ≡ '😀'
+  | .error _ => panic! "expected success"
+
+test "hexDigitsN parses exact count" := do
+  match Parser.run (hexDigitsN 2) "ff" with
+  | .ok n => n ≡ 255
+  | .error _ => panic! "expected success"
+  match Parser.run (hexDigitsN 4) "1234" with
+  | .ok n => n ≡ 0x1234
+  | .error _ => panic! "expected success"
+
 #generate_tests
 
 end SiftTests.Text

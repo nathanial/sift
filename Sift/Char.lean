@@ -46,6 +46,18 @@ def spaces : Parser Unit :=
 def spaces1 : Parser Unit :=
   skipWhile1 Char.isWhitespace
 
+/-- Match horizontal whitespace (space or tab) -/
+def hspace : Parser Char :=
+  satisfy (fun c => c == ' ' || c == '\t') <?> "horizontal whitespace"
+
+/-- Skip zero or more horizontal whitespace characters (space/tab only, not newlines) -/
+def hspaces : Parser Unit :=
+  skipWhile (fun c => c == ' ' || c == '\t')
+
+/-- Skip one or more horizontal whitespace characters -/
+def hspaces1 : Parser Unit :=
+  skipWhile1 (fun c => c == ' ' || c == '\t')
+
 /-- Match newline -/
 def newline : Parser Char :=
   char '\n' <?> "newline"
