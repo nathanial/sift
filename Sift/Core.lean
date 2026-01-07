@@ -41,7 +41,7 @@ def init {σ : Type} (input : String) (userState : σ) : ParseState σ :=
 
 /-- Check if at end of input -/
 def atEnd {σ : Type} (s : ParseState σ) : Bool :=
-  s.pos >= s.input.length
+  s.pos >= s.input.utf8ByteSize
 
 /-- Get current character (if not at end) -/
 def current? {σ : Type} (s : ParseState σ) : Option Char :=
@@ -55,7 +55,8 @@ def advance {σ : Type} (s : ParseState σ) : ParseState σ :=
     let (newLine, newCol) :=
       if c == '\n' then (s.line + 1, 1)
       else (s.line, s.column + 1)
-    { s with pos := s.pos + 1, line := newLine, column := newCol }
+    -- Advance by UTF-8 byte size of the character, not by 1
+    { s with pos := s.pos + c.utf8Size, line := newLine, column := newCol }
 
 /-- Get current source position -/
 def sourcePos {σ : Type} (s : ParseState σ) : SourcePos :=

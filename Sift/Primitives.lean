@@ -32,8 +32,9 @@ def anyChar {σ : Type} : Parser σ Char := fun s =>
 
 /-- Match a specific string -/
 partial def string {σ : Type} (expected : String) : Parser σ String := fun s =>
+  -- idx is a byte position into the expected string
   let rec go (idx : Nat) (state : ParseState σ) : Except ParseError (String × ParseState σ) :=
-    if idx >= expected.length then
+    if idx >= expected.utf8ByteSize then
       .ok (expected, state)
     else
       match state.current? with
@@ -43,7 +44,8 @@ partial def string {σ : Type} (expected : String) : Parser σ String := fun s =
       | some c =>
         let ec := String.Pos.Raw.get expected ⟨idx⟩
         if c == ec then
-          go (idx + 1) state.advance
+          -- Advance idx by the UTF-8 byte size of the character
+          go (idx + ec.utf8Size) state.advance
         else
           -- Report at current position so consumed input prevents backtracking
           .error ((ParseError.fromState state s!"unexpected '{c}'").expecting s!"\"{expected}\"")
@@ -137,10 +139,17 @@ def atEnd {σ : Type} : Parser σ Bool := fun s =>
 partial def peekString {σ : Type} (n : Nat) : Parser σ (Option String) := fun s =>
   if s.atEnd then .ok (none, s)
   else
-    let available := s.input.length - s.pos
-    if available < n then .ok (none, s)
-    else
-      let result := String.Pos.Raw.extract s.input ⟨s.pos⟩ ⟨s.pos + n⟩
+    -- Find the byte position after n characters
+    let rec findEndPos (pos : Nat) (remaining : Nat) : Option Nat :=
+      if remaining == 0 then some pos
+      else if pos >= s.input.utf8ByteSize then none
+      else
+        let c := String.Pos.Raw.get s.input ⟨pos⟩
+        findEndPos (pos + c.utf8Size) (remaining - 1)
+    match findEndPos s.pos n with
+    | none => .ok (none, s)
+    | some endPos =>
+      let result := String.Pos.Raw.extract s.input ⟨s.pos⟩ ⟨endPos⟩
       .ok (some result, s)
 
 end Sift
