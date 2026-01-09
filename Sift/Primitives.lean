@@ -31,25 +31,22 @@ def anyChar {σ : Type} : Parser σ Char := fun s =>
   | some c => .ok (c, s.advance)
 
 /-- Match a specific string -/
-partial def string {σ : Type} (expected : String) : Parser σ String := fun s =>
-  -- idx is a byte position into the expected string
-  let rec go (idx : Nat) (state : ParseState σ) : Except ParseError (String × ParseState σ) :=
-    if idx >= expected.utf8ByteSize then
-      .ok (expected, state)
-    else
+def string {σ : Type} (expected : String) : Parser σ String := fun s =>
+  let rec go (chars : List Char) (state : ParseState σ) : Except ParseError (String × ParseState σ) :=
+    match chars with
+    | [] => .ok (expected, state)
+    | ec :: rest =>
       match state.current? with
       | none =>
         -- Report at current position (may have consumed input)
         .error ((ParseError.fromState state "unexpected end of input").expecting s!"\"{expected}\"")
       | some c =>
-        let ec := String.Pos.Raw.get expected ⟨idx⟩
         if c == ec then
-          -- Advance idx by the UTF-8 byte size of the character
-          go (idx + ec.utf8Size) state.advance
+          go rest state.advance
         else
           -- Report at current position so consumed input prevents backtracking
           .error ((ParseError.fromState state s!"unexpected '{c}'").expecting s!"\"{expected}\"")
-  go 0 s
+  go expected.toList s
 
 /-- Match a string case-insensitively (returns the matched string as it appeared in input) -/
 partial def stringCI {σ : Type} (expected : String) : Parser σ String := fun s =>
@@ -90,62 +87,61 @@ def skip {σ : Type} : Parser σ Unit := fun s =>
   | some _ => .ok ((), s.advance)
 
 /-- Take exactly n characters -/
-partial def take {σ : Type} (n : Nat) : Parser σ String := fun s =>
-  let rec go (remaining : Nat) (acc : String) (state : ParseState σ) : Except ParseError (String × ParseState σ) :=
-    if remaining == 0 then .ok (acc, state)
-    else match state.current? with
-    | none => .error (ParseError.fromState state s!"expected {remaining} more characters")
-    | some c => go (remaining - 1) (acc.push c) state.advance
+def take {σ : Type} (n : Nat) : Parser σ String := fun s =>
+  let rec go : Nat → String → ParseState σ → Except ParseError (String × ParseState σ)
+    | 0, acc, state => .ok (acc, state)
+    | Nat.succ remaining, acc, state =>
+      match state.current? with
+      | none => .error (ParseError.fromState state s!"expected {remaining.succ} more characters")
+      | some c => go remaining (acc.push c) state.advance
   go n "" s
 
 /-- Take characters while predicate holds -/
-partial def takeWhile {σ : Type} (pred : Char → Bool) : Parser σ String := fun s =>
-  let rec go (acc : String) (state : ParseState σ) : String × ParseState σ :=
-    match state.current? with
-    | none => (acc, state)
-    | some c =>
-      if pred c then go (acc.push c) state.advance
-      else (acc, state)
-  .ok (go "" s)
+def takeWhile {σ : Type} (pred : Char → Bool) : Parser σ String := fun s =>
+  let fuel := s.input.utf8ByteSize - s.pos
+  let rec go : Nat → String → ParseState σ → String × ParseState σ
+    | 0, acc, state => (acc, state)
+    | Nat.succ remaining, acc, state =>
+      match state.current? with
+      | none => (acc, state)
+      | some c =>
+        if pred c then go remaining (acc.push c) state.advance
+        else (acc, state)
+  .ok (go fuel "" s)
 
 /-- Take at least one character while predicate holds -/
-partial def takeWhile1 {σ : Type} (pred : Char → Bool) : Parser σ String := fun s =>
+def takeWhile1 {σ : Type} (pred : Char → Bool) : Parser σ String := fun s =>
   match s.current? with
   | none => .error (ParseError.fromState s "unexpected end of input")
   | some c =>
     if pred c then
-      let rec go (acc : String) (state : ParseState σ) : String × ParseState σ :=
-        match state.current? with
-        | none => (acc, state)
-        | some c' =>
-          if pred c' then go (acc.push c') state.advance
-          else (acc, state)
-      .ok (go (String.singleton c) s.advance)
+      match takeWhile pred s.advance with
+      | .ok (rest, state) => .ok (String.singleton c ++ rest, state)
+      | .error e => .error e
     else .error (ParseError.fromState s s!"unexpected '{c}'")
 
 /-- Skip characters while predicate holds -/
-partial def skipWhile {σ : Type} (pred : Char → Bool) : Parser σ Unit := fun s =>
-  let rec go (state : ParseState σ) : ParseState σ :=
-    match state.current? with
-    | none => state
-    | some c =>
-      if pred c then go state.advance
-      else state
-  .ok ((), go s)
+def skipWhile {σ : Type} (pred : Char → Bool) : Parser σ Unit := fun s =>
+  let fuel := s.input.utf8ByteSize - s.pos
+  let rec go : Nat → ParseState σ → ParseState σ
+    | 0, state => state
+    | Nat.succ remaining, state =>
+      match state.current? with
+      | none => state
+      | some c =>
+        if pred c then go remaining state.advance
+        else state
+  .ok ((), go fuel s)
 
 /-- Skip at least one character while predicate holds -/
-partial def skipWhile1 {σ : Type} (pred : Char → Bool) : Parser σ Unit := fun s =>
+def skipWhile1 {σ : Type} (pred : Char → Bool) : Parser σ Unit := fun s =>
   match s.current? with
   | none => .error (ParseError.fromState s "unexpected end of input")
   | some c =>
     if pred c then
-      let rec go (state : ParseState σ) : ParseState σ :=
-        match state.current? with
-        | none => state
-        | some c' =>
-          if pred c' then go state.advance
-          else state
-      .ok ((), go s.advance)
+      match skipWhile pred s.advance with
+      | .ok ((), state) => .ok ((), state)
+      | .error e => .error e
     else .error (ParseError.fromState s s!"unexpected '{c}'")
 
 /-- Check if at end of input -/

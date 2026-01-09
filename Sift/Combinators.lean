@@ -49,12 +49,19 @@ def optional {σ α : Type} (p : Parser σ α) : Parser σ (Option α) :=
   (some <$> p) <|> pure none
 
 /-- Zero or more occurrences -/
-partial def many {σ α : Type} (p : Parser σ α) : Parser σ (Array α) := fun s =>
-  let rec go (acc : Array α) (state : ParseState σ) : Array α × ParseState σ :=
-    match p state with
-    | .ok (a, state') => go (acc.push a) state'
-    | .error _ => (acc, state)
-  .ok (go #[] s)
+def many {σ α : Type} (p : Parser σ α) : Parser σ (Array α) := fun s =>
+  let fuel := s.input.utf8ByteSize - s.pos
+  let rec go : Nat → Array α → ParseState σ → Except ParseError (Array α × ParseState σ)
+    | 0, acc, state => .ok (acc, state)
+    | Nat.succ remaining, acc, state =>
+      match p state with
+      | .ok (a, state') =>
+        if state'.pos <= state.pos then
+          .error (ParseError.fromState state "parser did not consume input")
+        else
+          go remaining (acc.push a) state'
+      | .error _ => .ok (acc, state)
+  go fuel #[] s
 
 /-- One or more occurrences -/
 def many1 {σ α : Type} (p : Parser σ α) : Parser σ (Array α) := do
@@ -63,12 +70,21 @@ def many1 {σ α : Type} (p : Parser σ α) : Parser σ (Array α) := do
   pure (#[first] ++ rest)
 
 /-- Skip zero or more occurrences -/
-partial def skipMany {σ α : Type} (p : Parser σ α) : Parser σ Unit := fun s =>
-  let rec go (state : ParseState σ) : ParseState σ :=
-    match p state with
-    | .ok (_, state') => go state'
-    | .error _ => state
-  .ok ((), go s)
+def skipMany {σ α : Type} (p : Parser σ α) : Parser σ Unit := fun s =>
+  let fuel := s.input.utf8ByteSize - s.pos
+  let rec go : Nat → ParseState σ → Except ParseError (ParseState σ)
+    | 0, state => .ok state
+    | Nat.succ remaining, state =>
+      match p state with
+      | .ok (_, state') =>
+        if state'.pos <= state.pos then
+          .error (ParseError.fromState state "parser did not consume input")
+        else
+          go remaining state'
+      | .error _ => .ok state
+  match go fuel s with
+  | .ok state' => .ok ((), state')
+  | .error e => .error e
 
 /-- Skip one or more occurrences -/
 def skipMany1 {σ α : Type} (p : Parser σ α) : Parser σ Unit := do
@@ -83,33 +99,53 @@ def count {σ α : Type} (n : Nat) (p : Parser σ α) : Parser σ (Array α) := 
   pure result
 
 /-- Parse until end condition (does not consume end marker) -/
-partial def manyTill {σ α β : Type} (p : Parser σ α) (endp : Parser σ β) : Parser σ (Array α) := fun s =>
-  let rec go (acc : Array α) (state : ParseState σ) : Except ParseError (Array α × ParseState σ) :=
-    -- First try the end parser
-    match endp state with
-    | .ok _ => .ok (acc, state)  -- Don't consume end marker
-    | .error e1 =>
-      if e1.pos.offset == state.pos then
-        -- End parser failed without consuming, try main parser
-        match p state with
-        | .ok (a, state') => go (acc.push a) state'
-        | .error e2 => .error e2
-      else
-        .error e1
-  go #[] s
+def manyTill {σ α β : Type} (p : Parser σ α) (endp : Parser σ β) : Parser σ (Array α) := fun s =>
+  let fuel := s.input.utf8ByteSize - s.pos
+  let rec go : Nat → Array α → ParseState σ → Except ParseError (Array α × ParseState σ)
+    | 0, acc, state =>
+      match endp state with
+      | .ok _ => .ok (acc, state)  -- Don't consume end marker
+      | .error e1 =>
+        if e1.pos.offset == state.pos then
+          match p state with
+          | .ok (_, state') =>
+            if state'.pos <= state.pos then
+              .error (ParseError.fromState state "parser did not consume input")
+            else
+              .error e1
+          | .error e2 => .error e2
+        else
+          .error e1
+    | Nat.succ remaining, acc, state =>
+      -- First try the end parser
+      match endp state with
+      | .ok _ => .ok (acc, state)  -- Don't consume end marker
+      | .error e1 =>
+        if e1.pos.offset == state.pos then
+          -- End parser failed without consuming, try main parser
+          match p state with
+          | .ok (a, state') =>
+            if state'.pos <= state.pos then
+              .error (ParseError.fromState state "parser did not consume input")
+            else
+              go remaining (acc.push a) state'
+          | .error e2 => .error e2
+        else
+          .error e1
+  go fuel #[] s
 
 /-- One or more separated by sep -/
-partial def sepBy1 {σ α β : Type} (p : Parser σ α) (sep : Parser σ β) : Parser σ (Array α) := do
+def sepBy1 {σ α β : Type} (p : Parser σ α) (sep : Parser σ β) : Parser σ (Array α) := do
   let first ← p
   let rest ← many (sep *> p)
   pure (#[first] ++ rest)
 
 /-- Zero or more separated by sep -/
-partial def sepBy {σ α β : Type} (p : Parser σ α) (sep : Parser σ β) : Parser σ (Array α) :=
+def sepBy {σ α β : Type} (p : Parser σ α) (sep : Parser σ β) : Parser σ (Array α) :=
   (sepBy1 p sep) <|> pure #[]
 
 /-- Zero or more ended by sep -/
-partial def endBy {σ α β : Type} (p : Parser σ α) (sep : Parser σ β) : Parser σ (Array α) :=
+def endBy {σ α β : Type} (p : Parser σ α) (sep : Parser σ β) : Parser σ (Array α) :=
   many (p <* sep)
 
 /-- One or more ended by sep -/
@@ -117,17 +153,13 @@ def endBy1 {σ α β : Type} (p : Parser σ α) (sep : Parser σ β) : Parser σ
   many1 (p <* sep)
 
 /-- One or more separated and optionally ended by sep -/
-partial def sepEndBy1 {σ α β : Type} (p : Parser σ α) (sep : Parser σ β) : Parser σ (Array α) := do
-  let first ← p
-  let more ← optional sep
-  match more with
-  | none => pure #[first]
-  | some _ =>
-    let rest ← sepEndBy1 p sep <|> pure #[]
-    pure (#[first] ++ rest)
+def sepEndBy1 {σ α β : Type} (p : Parser σ α) (sep : Parser σ β) : Parser σ (Array α) := do
+  let items ← sepBy1 p sep
+  let _ ← optional sep
+  pure items
 
 /-- Zero or more separated and optionally ended by sep -/
-partial def sepEndBy {σ α β : Type} (p : Parser σ α) (sep : Parser σ β) : Parser σ (Array α) :=
+def sepEndBy {σ α β : Type} (p : Parser σ α) (sep : Parser σ β) : Parser σ (Array α) :=
   (sepEndBy1 p sep) <|> pure #[]
 
 /-- Parse between open and close -/
@@ -149,33 +181,32 @@ def lookAhead {σ α : Type} (p : Parser σ α) : Parser σ α := fun s =>
   | .error e => .error e
 
 /-- Left-associative chain, at least one -/
-partial def chainl1 {σ α : Type} (p : Parser σ α) (op : Parser σ (α → α → α)) : Parser σ α := do
+def chainl1 {σ α : Type} (p : Parser σ α) (op : Parser σ (α → α → α)) : Parser σ α := do
   let first ← p
-  let rec go (acc : α) : Parser σ α := do
-    let more ← optional op
-    match more with
-    | none => pure acc
-    | some f =>
-      let next ← p
-      go (f acc next)
-  go first
+  let rest ← many (do
+    let f ← op
+    let next ← p
+    pure (f, next))
+  pure (rest.foldl (fun acc (f, next) => f acc next) first)
 
 /-- Left-associative chain with default -/
-partial def chainl {σ α : Type} (p : Parser σ α) (op : Parser σ (α → α → α)) (default : α) : Parser σ α :=
+def chainl {σ α : Type} (p : Parser σ α) (op : Parser σ (α → α → α)) (default : α) : Parser σ α :=
   (chainl1 p op) <|> pure default
 
 /-- Right-associative chain, at least one -/
-partial def chainr1 {σ α : Type} (p : Parser σ α) (op : Parser σ (α → α → α)) : Parser σ α := do
+def chainr1 {σ α : Type} (p : Parser σ α) (op : Parser σ (α → α → α)) : Parser σ α := do
   let first ← p
-  let more ← optional op
-  match more with
-  | none => pure first
-  | some f =>
-    let rest ← chainr1 p op
-    pure (f first rest)
+  let rest ← many (do
+    let f ← op
+    let next ← p
+    pure (f, next))
+  let rec go : α → List ((α → α → α) × α) → α
+    | left, [] => left
+    | left, (f, right) :: more => f left (go right more)
+  pure (go first rest.toList)
 
 /-- Right-associative chain with default -/
-partial def chainr {σ α : Type} (p : Parser σ α) (op : Parser σ (α → α → α)) (default : α) : Parser σ α :=
+def chainr {σ α : Type} (p : Parser σ α) (op : Parser σ (α → α → α)) (default : α) : Parser σ α :=
   (chainr1 p op) <|> pure default
 
 /-- Label a parser for better error messages -/
