@@ -229,6 +229,15 @@ def semiSep {σ α : Type} (p : Parser σ α) : Parser σ (Array α) :=
 def semiSep1 {σ α : Type} (p : Parser σ α) : Parser σ (Array α) :=
   sepBy1 p (symbol ";")
 
+/-- Parse common escape sequences, parameterized by the quote character. -/
+def escapeChar {σ : Type} (quote : Char) : Parser σ Char :=
+  (char 'n' *> pure '\n') <|>
+  (char 'r' *> pure '\r') <|>
+  (char 't' *> pure '\t') <|>
+  (char '\\' *> pure '\\') <|>
+  (char quote *> pure quote) <|>
+  (char '0' *> pure '\x00')
+
 /-- Parse a double-quoted string literal with escape sequences -/
 def stringLiteral {σ : Type} : Parser σ String := do
   let _ ← char '"'
@@ -237,28 +246,13 @@ def stringLiteral {σ : Type} : Parser σ String := do
   pure (String.ofList chars.toList)
 where
   charContent : Parser σ Char :=
-    (char '\\' *> escapeChar) <|> satisfy (· != '"')
-  escapeChar : Parser σ Char :=
-    (char 'n' *> pure '\n') <|>
-    (char 'r' *> pure '\r') <|>
-    (char 't' *> pure '\t') <|>
-    (char '\\' *> pure '\\') <|>
-    (char '"' *> pure '"') <|>
-    (char '0' *> pure '\x00')
+    (char '\\' *> escapeChar '"') <|> satisfy (· != '"')
 
 /-- Parse a single-quoted character literal -/
 def charLiteral {σ : Type} : Parser σ Char := do
   let _ ← char '\''
-  let c ← (char '\\' *> escapeChar) <|> satisfy (· != '\'')
+  let c ← (char '\\' *> escapeChar '\'') <|> satisfy (· != '\'')
   let _ ← char '\''
   pure c
-where
-  escapeChar : Parser σ Char :=
-    (char 'n' *> pure '\n') <|>
-    (char 'r' *> pure '\r') <|>
-    (char 't' *> pure '\t') <|>
-    (char '\\' *> pure '\\') <|>
-    (char '\'' *> pure '\'') <|>
-    (char '0' *> pure '\x00')
 
 end Sift

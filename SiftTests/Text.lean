@@ -170,6 +170,11 @@ test "stringLiteral parses escapes" := do
   | .ok s => s ≡ "tab\there"
   | .error _ => panic! "expected success"
 
+test "stringLiteral parses escaped quote" := do
+  match Parser.run stringLiteral "\"he\\\"llo\"" with
+  | .ok s => s ≡ "he\"llo"
+  | .error _ => panic! "expected success"
+
 test "charLiteral parses character" := do
   match Parser.run charLiteral "'a'" with
   | .ok c => c ≡ 'a'
@@ -178,6 +183,11 @@ test "charLiteral parses character" := do
 test "charLiteral parses escape" := do
   match Parser.run charLiteral "'\\n'" with
   | .ok c => c ≡ '\n'
+  | .error _ => panic! "expected success"
+
+test "charLiteral parses escaped quote" := do
+  match Parser.run charLiteral "'\\''" with
+  | .ok c => c ≡ '\''
   | .error _ => panic! "expected success"
 
 test "digitsWithUnderscores parses plain digits" := do
