@@ -64,11 +64,20 @@ def sourcePos {σ : Type} (s : ParseState σ) : SourcePos :=
 
 end ParseState
 
+/-- Structured error kind for richer reporting -/
+inductive ParseErrorKind where
+  | generic
+  | unexpectedEof
+  | unexpectedChar (c : Char)
+  | expectedEof
+  deriving Repr, BEq
+
 /-- Parser error with position and message -/
 structure ParseError where
   pos : SourcePos
   message : String
   expected : List String := []
+  kind : ParseErrorKind := .generic
   deriving Repr, BEq
 
 instance : ToString ParseError where
@@ -83,14 +92,46 @@ namespace ParseError
 def fromState {σ : Type} (s : ParseState σ) (msg : String) : ParseError :=
   { pos := s.sourcePos, message := msg }
 
+/-- Unexpected end of input error -/
+def unexpectedEof {σ : Type} (s : ParseState σ) : ParseError :=
+  { pos := s.sourcePos, message := "unexpected end of input", kind := .unexpectedEof }
+
+/-- Unexpected character error -/
+def unexpectedChar {σ : Type} (s : ParseState σ) (c : Char) : ParseError :=
+  { pos := s.sourcePos, message := s!"unexpected '{c}'", kind := .unexpectedChar c }
+
+/-- Expected end of input error -/
+def expectedEof {σ : Type} (s : ParseState σ) (c : Char) : ParseError :=
+  { pos := s.sourcePos, message := s!"expected end of input, got '{c}'", kind := .expectedEof }
+
 /-- Add expected item to error -/
 def expecting (e : ParseError) (item : String) : ParseError :=
   { e with expected := [item] }
 
+/-- Prefer errors with more specific structured information. -/
+private def specificity (kind : ParseErrorKind) : Nat :=
+  match kind with
+  | .unexpectedChar _ => 3
+  | .unexpectedEof => 2
+  | .expectedEof => 2
+  | .generic => 1
+
+private def dedupExpected (items : List String) : List String :=
+  items.foldl (fun acc item => if acc.any (· == item) then acc else acc ++ [item]) []
+
+private def prefer (e1 e2 : ParseError) : ParseError :=
+  let s1 := specificity e1.kind
+  let s2 := specificity e2.kind
+  if s1 > s2 then e1
+  else if s2 > s1 then e2
+  else if e1.expected.length >= e2.expected.length then e1 else e2
+
 /-- Merge expected items from two errors at the same position -/
 def merge (e1 e2 : ParseError) : ParseError :=
   if e1.pos == e2.pos then
-    { e1 with expected := e1.expected ++ e2.expected }
+    let expected := dedupExpected (e1.expected ++ e2.expected)
+    let base := prefer e1 e2
+    { base with expected := expected }
   else if e1.pos.offset > e2.pos.offset then e1 else e2
 
 end ParseError

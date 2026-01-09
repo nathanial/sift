@@ -11,23 +11,24 @@ namespace Sift
 /-- Match a character satisfying a predicate -/
 def satisfy {σ : Type} (pred : Char → Bool) : Parser σ Char := fun s =>
   match s.current? with
-  | none => .error (ParseError.fromState s "unexpected end of input")
+  | none =>
+    .error ((ParseError.unexpectedEof s).expecting "character matching predicate")
   | some c =>
     if pred c then .ok (c, s.advance)
-    else .error (ParseError.fromState s s!"unexpected character '{c}'")
+    else .error ((ParseError.unexpectedChar s c).expecting "character matching predicate")
 
 /-- Match a specific character -/
 def char {σ : Type} (c : Char) : Parser σ Char := fun s =>
   match s.current? with
-  | none => .error ((ParseError.fromState s "unexpected end of input").expecting s!"'{c}'")
+  | none => .error ((ParseError.unexpectedEof s).expecting s!"'{c}'")
   | some c' =>
     if c == c' then .ok (c, s.advance)
-    else .error ((ParseError.fromState s s!"unexpected '{c'}'").expecting s!"'{c}'")
+    else .error ((ParseError.unexpectedChar s c').expecting s!"'{c}'")
 
 /-- Match any character -/
 def anyChar {σ : Type} : Parser σ Char := fun s =>
   match s.current? with
-  | none => .error (ParseError.fromState s "unexpected end of input")
+  | none => .error ((ParseError.unexpectedEof s).expecting "any character")
   | some c => .ok (c, s.advance)
 
 /-- Match a specific string -/
@@ -39,13 +40,13 @@ def string {σ : Type} (expected : String) : Parser σ String := fun s =>
       match state.current? with
       | none =>
         -- Report at current position (may have consumed input)
-        .error ((ParseError.fromState state "unexpected end of input").expecting s!"\"{expected}\"")
+        .error ((ParseError.unexpectedEof state).expecting s!"\"{expected}\"")
       | some c =>
         if c == ec then
           go rest state.advance
         else
           -- Report at current position so consumed input prevents backtracking
-          .error ((ParseError.fromState state s!"unexpected '{c}'").expecting s!"\"{expected}\"")
+          .error ((ParseError.unexpectedChar state c).expecting s!"\"{expected}\"")
   go expected.toList s
 
 /-- Match a string case-insensitively (returns the matched string as it appeared in input) -/
@@ -56,19 +57,21 @@ partial def stringCI {σ : Type} (expected : String) : Parser σ String := fun s
     else
       match state.current? with
       | none =>
-        .error ((ParseError.fromState state "unexpected end of input").expecting s!"\"{expected}\"")
+        .error ((ParseError.unexpectedEof state).expecting s!"\"{expected}\"")
       | some c =>
         let ec := String.Pos.Raw.get expected ⟨idx⟩
         if c.toLower == ec.toLower then
           go (idx + ec.utf8Size) state.advance (acc.push c)
         else
-          .error ((ParseError.fromState state s!"unexpected '{c}'").expecting s!"\"{expected}\"")
+          .error ((ParseError.unexpectedChar state c).expecting s!"\"{expected}\"")
   go 0 s ""
 
 /-- Match end of input -/
 def eof {σ : Type} : Parser σ Unit := fun s =>
   if s.atEnd then .ok ((), s)
-  else .error (ParseError.fromState s s!"expected end of input, got '{String.Pos.Raw.get s.input ⟨s.pos⟩}'")
+  else
+    let got := String.Pos.Raw.get s.input ⟨s.pos⟩
+    .error ((ParseError.expectedEof s got).expecting "end of input")
 
 /-- Peek at current character without consuming -/
 def peek {σ : Type} : Parser σ (Option Char) := fun s =>
@@ -77,13 +80,13 @@ def peek {σ : Type} : Parser σ (Option Char) := fun s =>
 /-- Peek at current character, fail if at end -/
 def peek! {σ : Type} : Parser σ Char := fun s =>
   match s.current? with
-  | none => .error (ParseError.fromState s "unexpected end of input")
+  | none => .error ((ParseError.unexpectedEof s).expecting "any character")
   | some c => .ok (c, s)
 
 /-- Skip a single character -/
 def skip {σ : Type} : Parser σ Unit := fun s =>
   match s.current? with
-  | none => .error (ParseError.fromState s "unexpected end of input")
+  | none => .error ((ParseError.unexpectedEof s).expecting "any character")
   | some _ => .ok ((), s.advance)
 
 /-- Take exactly n characters -/
@@ -92,7 +95,9 @@ def take {σ : Type} (n : Nat) : Parser σ String := fun s =>
     | 0, acc, state => .ok (acc, state)
     | Nat.succ remaining, acc, state =>
       match state.current? with
-      | none => .error (ParseError.fromState state s!"expected {remaining.succ} more characters")
+      | none =>
+        let e := ParseError.fromState state s!"expected {remaining.succ} more characters"
+        .error ({ e with kind := .unexpectedEof }.expecting s!"{remaining.succ} more characters")
       | some c => go remaining (acc.push c) state.advance
   go n "" s
 
@@ -112,13 +117,14 @@ def takeWhile {σ : Type} (pred : Char → Bool) : Parser σ String := fun s =>
 /-- Take at least one character while predicate holds -/
 def takeWhile1 {σ : Type} (pred : Char → Bool) : Parser σ String := fun s =>
   match s.current? with
-  | none => .error (ParseError.fromState s "unexpected end of input")
+  | none =>
+    .error ((ParseError.unexpectedEof s).expecting "character matching predicate")
   | some c =>
     if pred c then
       match takeWhile pred s.advance with
       | .ok (rest, state) => .ok (String.singleton c ++ rest, state)
       | .error e => .error e
-    else .error (ParseError.fromState s s!"unexpected '{c}'")
+    else .error ((ParseError.unexpectedChar s c).expecting "character matching predicate")
 
 /-- Skip characters while predicate holds -/
 def skipWhile {σ : Type} (pred : Char → Bool) : Parser σ Unit := fun s =>
@@ -136,13 +142,14 @@ def skipWhile {σ : Type} (pred : Char → Bool) : Parser σ Unit := fun s =>
 /-- Skip at least one character while predicate holds -/
 def skipWhile1 {σ : Type} (pred : Char → Bool) : Parser σ Unit := fun s =>
   match s.current? with
-  | none => .error (ParseError.fromState s "unexpected end of input")
+  | none =>
+    .error ((ParseError.unexpectedEof s).expecting "character matching predicate")
   | some c =>
     if pred c then
       match skipWhile pred s.advance with
       | .ok ((), state) => .ok ((), state)
       | .error e => .error e
-    else .error (ParseError.fromState s s!"unexpected '{c}'")
+    else .error ((ParseError.unexpectedChar s c).expecting "character matching predicate")
 
 /-- Check if at end of input -/
 def atEnd {σ : Type} : Parser σ Bool := fun s =>
