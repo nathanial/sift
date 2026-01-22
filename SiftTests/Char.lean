@@ -182,6 +182,6 @@ test "hspaces1 requires at least one" := do
   | .error _ => pure ()
   | .ok _ => panic! "expected failure"
 
-#generate_tests
+
 
 end SiftTests.Char

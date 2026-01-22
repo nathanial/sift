@@ -307,6 +307,6 @@ test "hexDigitsN parses exact count" := do
   | .ok n => n ≡ 0x1234
   | .error _ => panic! "expected success"
 
-#generate_tests
+
 
 end SiftTests.Text

@@ -239,6 +239,6 @@ test "precBinary works for simple case" := do
   | .ok e => e.eval ≡ 7
   | .error _ => panic! "expected success"
 
-#generate_tests
+
 
 end SiftTests.Prec

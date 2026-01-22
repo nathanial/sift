@@ -200,6 +200,6 @@ test "peekString with multi-byte prefix" := do
     first ≡ 'a'
   | .error e => panic! s!"expected success, got: {e}"
 
-#generate_tests
+
 
 end SiftTests.Utf8

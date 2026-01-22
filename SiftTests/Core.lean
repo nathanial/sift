@@ -57,6 +57,6 @@ test "position tracks multiple newlines" := do
     pos.column ≡ 2
   | .error _ => panic! "unexpected failure"
 
-#generate_tests
+
 
 end SiftTests.Core

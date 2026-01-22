@@ -153,6 +153,6 @@ test "label improves error message" := do
   | .error e => shouldContainSubstr (toString e) "a digit"
   | .ok _ => panic! "expected failure"
 
-#generate_tests
+
 
 end SiftTests.Combinators
