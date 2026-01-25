@@ -290,6 +290,59 @@ Parser.runWith parseIf "if x:\n    y\n    z" IndentState.init
 
 7. **hspaces vs spaces**: Use `hspaces` when you want to skip only horizontal whitespace (spaces/tabs) but not newlines.
 
+## Regex Integration with Rune
+
+Sift cannot directly depend on rune (circular dependency: rune uses sift for regex parsing). However, projects that use both libraries can create a regex combinator:
+
+```lean
+import Sift
+import Rune
+
+namespace Sift
+
+/-- Match a compiled regex at the current position -/
+def regex {σ : Type} (re : Rune.Regex) : Parser σ String := fun s =>
+  match re.matchAt s.input s.pos with
+  | some m =>
+    -- Update position to end of match
+    -- Note: Need to track line/column changes through matched text
+    let matched := m.text
+    let newState := matched.foldl (fun st c =>
+      if c == '\n' then { st with line := st.line + 1, column := 1 }
+      else { st with column := st.column + 1 }
+    ) { s with pos := m.stop }
+    .ok (matched, newState)
+  | none =>
+    .error (ParseError.fromState s s!"regex '{re.getPattern}' did not match")
+
+/-- Match regex and return capture groups -/
+def regexCaptures {σ : Type} (re : Rune.Regex) : Parser σ (String × Array (Option String)) := fun s =>
+  match re.matchAt s.input s.pos with
+  | some m =>
+    let matched := m.text
+    let newState := matched.foldl (fun st c =>
+      if c == '\n' then { st with line := st.line + 1, column := 1 }
+      else { st with column := st.column + 1 }
+    ) { s with pos := m.stop }
+    let captures := (List.range m.numCaptures).map (fun i => m.group (i + 1)) |>.toArray
+    .ok ((matched, captures), newState)
+  | none =>
+    .error (ParseError.fromState s s!"regex '{re.getPattern}' did not match")
+
+end Sift
+```
+
+Usage:
+```lean
+let emailRe := Rune.Regex.compile! "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
+let parseEmail : Parser Unit String := regex emailRe
+```
+
+**Key points:**
+- Use `Rune.Regex.matchAt` (not `find`) to match at current position only
+- Update line/column tracking when advancing through matched text
+- Rune v0.0.3+ provides `matchAt` and `matchPrefix` for position-specific matching
+
 ## Testing Patterns
 
 Tests use the `crucible` framework:
