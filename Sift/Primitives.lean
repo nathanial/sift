@@ -66,6 +66,14 @@ partial def stringCI {σ : Type} (expected : String) : Parser σ String := fun s
           .error ((ParseError.unexpectedChar state c).expecting s!"\"{expected}\"")
   go 0 s ""
 
+/-- Match a character case-insensitively (returns the character as it appeared in input) -/
+def charCI {σ : Type} (c : Char) : Parser σ Char := fun s =>
+  match s.current? with
+  | none => .error ((ParseError.unexpectedEof s).expecting s!"'{c}' (case-insensitive)")
+  | some c' =>
+    if c.toLower == c'.toLower then .ok (c', s.advance)
+    else .error ((ParseError.unexpectedChar s c').expecting s!"'{c}' (case-insensitive)")
+
 /-- Match end of input -/
 def eof {σ : Type} : Parser σ Unit := fun s =>
   if s.atEnd then .ok ((), s)
