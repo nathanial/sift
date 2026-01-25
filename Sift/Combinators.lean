@@ -64,10 +64,24 @@ def many {σ α : Type} (p : Parser σ α) : Parser σ (Array α) := fun s =>
   go fuel #[] s
 
 /-- One or more occurrences -/
-def many1 {σ α : Type} (p : Parser σ α) : Parser σ (Array α) := do
-  let first ← p
-  let rest ← many p
-  pure (#[first] ++ rest)
+def many1 {σ α : Type} (p : Parser σ α) : Parser σ (Array α) := fun s =>
+  -- First parse must succeed
+  match p s with
+  | .error e => .error e
+  | .ok (first, s') =>
+    -- Then collect zero or more additional matches
+    let fuel := s'.input.utf8ByteSize - s'.pos
+    let rec go : Nat → Array α → ParseState σ → Except ParseError (Array α × ParseState σ)
+      | 0, acc, state => .ok (acc, state)
+      | Nat.succ remaining, acc, state =>
+        match p state with
+        | .ok (a, state') =>
+          if state'.pos <= state.pos then
+            .error (ParseError.fromState state "parser did not consume input")
+          else
+            go remaining (acc.push a) state'
+        | .error _ => .ok (acc, state)
+    go fuel #[first] s'
 
 /-- Skip zero or more occurrences -/
 def skipMany {σ α : Type} (p : Parser σ α) : Parser σ Unit := fun s =>

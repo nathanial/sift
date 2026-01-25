@@ -184,6 +184,11 @@ instance {σ : Type} : MonadExceptOf ParseError (Parser σ) where
     | .ok result => .ok result
     | .error e => handler e s
 
+instance {σ : Type} : MonadStateOf (ParseState σ) (Parser σ) where
+  get := Parser.get
+  set := Parser.set
+  modifyGet f := fun s => let (a, s') := f s; .ok (a, s')
+
 /-- Fail with a message -/
 def fail {σ α : Type} (msg : String) : Parser σ α := fun s =>
   .error (ParseError.fromState s msg)
