@@ -290,6 +290,70 @@ def manyRecover {σ α β : Type} (p : Parser σ α) (syncParser : Parser σ β)
           | .error _ => .ok (acc, state)  -- Can't sync, return what we have
   go fuel #[] s
 
+/-! ## Permutation Combinators -/
+
+/-- Type class for permutation parsing. Allows `permute` to work with
+    tuples of 2, 3, or 4 parsers. -/
+class Permutable (σ : Type) (Parsers : Type) (Result : outParam Type) where
+  /-- Parse elements in any order, each exactly once.
+      Returns results in the order of the parser tuple, not parse order. -/
+  permute : Parsers → Parser σ Result
+
+/-- Permute two parsers. -/
+instance {σ α β : Type} : Permutable σ (Parser σ α × Parser σ β) (α × β) where
+  permute := fun (p1, p2) =>
+    -- Try p1 first, then p2
+    (do let a ← attempt p1; let b ← p2; pure (a, b))
+    <|>
+    -- Or p2 first, then p1
+    (do let b ← attempt p2; let a ← p1; pure (a, b))
+
+/-- Permute three parsers. -/
+instance {σ α β γ : Type} : Permutable σ (Parser σ α × Parser σ β × Parser σ γ) (α × β × γ) where
+  permute := fun (p1, p2, p3) =>
+    -- p1 first
+    (do let a ← attempt p1
+        let (b, c) ← Permutable.permute (p2, p3)
+        pure (a, b, c))
+    <|>
+    -- p2 first
+    (do let b ← attempt p2
+        let (a, c) ← Permutable.permute (p1, p3)
+        pure (a, b, c))
+    <|>
+    -- p3 first
+    (do let c ← attempt p3
+        let (a, b) ← Permutable.permute (p1, p2)
+        pure (a, b, c))
+
+/-- Permute four parsers. -/
+instance {σ α β γ δ : Type} : Permutable σ (Parser σ α × Parser σ β × Parser σ γ × Parser σ δ) (α × β × γ × δ) where
+  permute := fun (p1, p2, p3, p4) =>
+    -- p1 first
+    (do let a ← attempt p1
+        let (b, c, d) ← Permutable.permute (p2, p3, p4)
+        pure (a, b, c, d))
+    <|>
+    -- p2 first
+    (do let b ← attempt p2
+        let (a, c, d) ← Permutable.permute (p1, p3, p4)
+        pure (a, b, c, d))
+    <|>
+    -- p3 first
+    (do let c ← attempt p3
+        let (a, b, d) ← Permutable.permute (p1, p2, p4)
+        pure (a, b, c, d))
+    <|>
+    -- p4 first
+    (do let d ← attempt p4
+        let (a, b, c) ← Permutable.permute (p1, p2, p3)
+        pure (a, b, c, d))
+
+/-- Convenience function for permutation parsing.
+    Usage: `permute (p1, p2)` or `permute (p1, p2, p3)` etc. -/
+def permute {σ Parsers Result : Type} [Permutable σ Parsers Result] (parsers : Parsers) : Parser σ Result :=
+  Permutable.permute parsers
+
 /-- Label a parser for better error messages -/
 def label {σ α : Type} (p : Parser σ α) (name : String) : Parser σ α := fun s =>
   match p s with

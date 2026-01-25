@@ -212,4 +212,75 @@ test "manyRecover collects valid items" := do
   | .ok arr => arr.size ≡ 3  -- 1, 2, 3 (x skipped)
   | .error _ => panic! "expected success"
 
+-- Permutation Tests
+
+test "permute parses two in order" := do
+  let pa : Parser Unit Char := char 'a'
+  let pb : Parser Unit Char := char 'b'
+  match Parser.run (permute (pa, pb)) "ab" with
+  | .ok (a, b) =>
+    a ≡ 'a'
+    b ≡ 'b'
+  | .error _ => panic! "expected success"
+
+test "permute parses two reversed" := do
+  let pa : Parser Unit Char := char 'a'
+  let pb : Parser Unit Char := char 'b'
+  match Parser.run (permute (pa, pb)) "ba" with
+  | .ok (a, b) =>
+    a ≡ 'a'
+    b ≡ 'b'
+  | .error _ => panic! "expected success"
+
+test "permute fails on missing element" := do
+  let pa : Parser Unit Char := char 'a'
+  let pb : Parser Unit Char := char 'b'
+  match Parser.run (permute (pa, pb)) "aa" with
+  | .error _ => pure ()
+  | .ok _ => panic! "expected failure"
+
+test "permute parses three any order (cab)" := do
+  let pa : Parser Unit Char := char 'a'
+  let pb : Parser Unit Char := char 'b'
+  let pc : Parser Unit Char := char 'c'
+  match Parser.run (permute (pa, pb, pc)) "cab" with
+  | .ok (a, b, c) =>
+    a ≡ 'a'
+    b ≡ 'b'
+    c ≡ 'c'
+  | .error _ => panic! "expected success"
+
+test "permute parses three any order (bca)" := do
+  let pa : Parser Unit Char := char 'a'
+  let pb : Parser Unit Char := char 'b'
+  let pc : Parser Unit Char := char 'c'
+  match Parser.run (permute (pa, pb, pc)) "bca" with
+  | .ok (a, b, c) =>
+    a ≡ 'a'
+    b ≡ 'b'
+    c ≡ 'c'
+  | .error _ => panic! "expected success"
+
+test "permute parses four any order (dcba)" := do
+  let pa : Parser Unit Char := char 'a'
+  let pb : Parser Unit Char := char 'b'
+  let pc : Parser Unit Char := char 'c'
+  let pd : Parser Unit Char := char 'd'
+  match Parser.run (permute (pa, pb, pc, pd)) "dcba" with
+  | .ok (a, b, c, d) =>
+    a ≡ 'a'
+    b ≡ 'b'
+    c ≡ 'c'
+    d ≡ 'd'
+  | .error _ => panic! "expected success"
+
+test "permute with complex parsers" := do
+  let pName : Parser Unit String := string "name:" *> spaces *> many1Chars letter <* spaces
+  let pAge : Parser Unit Nat := string "age:" *> spaces *> natural <* spaces
+  match Parser.run (permute (pName, pAge)) "age: 25 name: Alice" with
+  | .ok (name, age) =>
+    name ≡ "Alice"
+    age ≡ 25
+  | .error _ => panic! "expected success"
+
 end SiftTests.Combinators
