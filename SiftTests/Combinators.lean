@@ -153,6 +153,63 @@ test "label improves error message" := do
   | .error e => shouldContainSubstr (toString e) "a digit"
   | .ok _ => panic! "expected failure"
 
+-- Error Recovery Tests
 
+test "recover handles success" := do
+  let p := recover digit (fun _ => pure 'x')
+  match Parser.run p "5" with
+  | .ok c => c ≡ '5'
+  | .error _ => panic! "expected success"
+
+test "recover calls handler on failure" := do
+  let p := recover digit (fun _ => pure 'x')
+  match Parser.run p "abc" with
+  | .ok c => c ≡ 'x'
+  | .error _ => panic! "expected recovery"
+
+test "recover passes error to handler" := do
+  -- Handler receives the error and can inspect it
+  let p := recover digit (fun e =>
+    if e.message.isEmpty then pure 'E' else pure 'H')
+  match Parser.run p "abc" with
+  | .ok c => c ≡ 'H'  -- Handler was called with non-empty error message
+  | .error _ => panic! "expected recovery"
+
+test "recoverWith returns default on failure" := do
+  let p := recoverWith natural 0
+  match Parser.run p "abc" with
+  | .ok n => n ≡ 0
+  | .error _ => panic! "expected recovery"
+
+test "recoverWith preserves success" := do
+  let p := recoverWith natural 0
+  match Parser.run p "42" with
+  | .ok n => n ≡ 42
+  | .error _ => panic! "expected success"
+
+test "skipUntil finds sync point" := do
+  let p := skipUntil (char ';')
+  match Parser.run p "abc;def" with
+  | .ok c => c ≡ ';'
+  | .error _ => panic! "expected success"
+
+test "skipUntil fails at eof" := do
+  let p := skipUntil (char ';')
+  match Parser.run p "abc" with
+  | .error _ => pure ()
+  | .ok _ => panic! "expected failure"
+
+test "withRecovery syncs to delimiter" := do
+  let p := withRecovery natural 0 (char ';')
+  match Parser.run p "abc;123" with
+  | .ok n => n ≡ 0
+  | .error _ => panic! "expected recovery"
+
+test "manyRecover collects valid items" := do
+  let item := natural <* char ','
+  let p := manyRecover item (char ',')
+  match Parser.run p "1,2,x,3," with
+  | .ok arr => arr.size ≡ 3  -- 1, 2, 3 (x skipped)
+  | .error _ => panic! "expected success"
 
 end SiftTests.Combinators

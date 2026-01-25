@@ -223,6 +223,73 @@ def chainr1 {σ α : Type} (p : Parser σ α) (op : Parser σ (α → α → α)
 def chainr {σ α : Type} (p : Parser σ α) (op : Parser σ (α → α → α)) (default : α) : Parser σ α :=
   (chainr1 p op) <|> pure default
 
+/-! ## Error Recovery Combinators -/
+
+/-- Recover from parser failure by calling handler with the error.
+    Handler receives the error and can attempt recovery or fail again. -/
+def recover {σ α : Type} (p : Parser σ α) (handler : ParseError → Parser σ α) : Parser σ α := fun s =>
+  match p s with
+  | .ok result => .ok result
+  | .error e => handler e s
+
+/-- Return default value on parser failure (simple recovery). -/
+def recoverWith {σ α : Type} (p : Parser σ α) (default : α) : Parser σ α := fun s =>
+  match p s with
+  | .ok result => .ok result
+  | .error _ => .ok (default, s)
+
+/-- Skip input until parser succeeds (for resynchronization).
+    Returns the result of the successful parse. -/
+def skipUntil {σ α : Type} (p : Parser σ α) : Parser σ α := fun s =>
+  let fuel := s.input.utf8ByteSize - s.pos
+  let rec go : Nat → ParseState σ → Except ParseError (α × ParseState σ)
+    | 0, state => .error (ParseError.unexpectedEof state)
+    | Nat.succ remaining, state =>
+      match p state with
+      | .ok result => .ok result
+      | .error _ =>
+        if state.atEnd then .error (ParseError.unexpectedEof state)
+        else go remaining state.advance
+  go fuel s
+
+/-- Skip input until parser succeeds, return Unit (just sync position). -/
+def skipUntil_ {σ α : Type} (p : Parser σ α) : Parser σ Unit := fun s =>
+  match skipUntil p s with
+  | .ok (_, s') => .ok ((), s')
+  | .error e => .error e
+
+/-- Recover with default value and skip to synchronization point.
+    On error: returns default and advances to where syncParser succeeds. -/
+def withRecovery {σ α β : Type} (p : Parser σ α) (default : α) (syncParser : Parser σ β) : Parser σ α := fun s =>
+  match p s with
+  | .ok result => .ok result
+  | .error _ =>
+    match skipUntil syncParser s with
+    | .ok (_, s') => .ok (default, s')
+    | .error e => .error e
+
+/-- Parse many items, recovering from individual failures.
+    Collects successful parses; on failure, skips to sync point and continues. -/
+def manyRecover {σ α β : Type} (p : Parser σ α) (syncParser : Parser σ β) : Parser σ (Array α) := fun s =>
+  let fuel := s.input.utf8ByteSize - s.pos
+  let rec go : Nat → Array α → ParseState σ → Except ParseError (Array α × ParseState σ)
+    | 0, acc, state => .ok (acc, state)
+    | Nat.succ remaining, acc, state =>
+      if state.atEnd then .ok (acc, state)
+      else
+        match p state with
+        | .ok (a, state') =>
+          if state'.pos <= state.pos then .ok (acc, state)  -- No progress, stop
+          else go remaining (acc.push a) state'
+        | .error _ =>
+          -- Try to skip to sync point
+          match skipUntil syncParser state with
+          | .ok (_, state') =>
+            if state'.pos <= state.pos then .ok (acc, state)  -- No progress, stop
+            else go remaining acc state'
+          | .error _ => .ok (acc, state)  -- Can't sync, return what we have
+  go fuel #[] s
+
 /-- Label a parser for better error messages -/
 def label {σ α : Type} (p : Parser σ α) (name : String) : Parser σ α := fun s =>
   match p s with
