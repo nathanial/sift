@@ -7,6 +7,7 @@ import SiftTests.Text
 import SiftTests.Utf8
 import SiftTests.Prec
 import SiftTests.Indent
+import SiftTests.Debug
 
 open Crucible
 

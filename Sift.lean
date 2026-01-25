@@ -5,6 +5,7 @@ import Sift.Char
 import Sift.Text
 import Sift.Prec
 import Sift.Indent
+import Sift.Debug
 
 /-!
 # Sift - Parser Combinator Library
